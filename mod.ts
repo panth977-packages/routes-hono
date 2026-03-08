@@ -1,4 +1,4 @@
-import { type Context, Hono, type TypedResponse } from "hono";
+import { type Context, Hono } from "hono";
 import { F } from "@panth977/functions";
 import { R } from "@panth977/routes";
 import { z } from "zod";
