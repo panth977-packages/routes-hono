@@ -1,4 +1,4 @@
-import { type Context, Hono } from "hono";
+import { type Context, Hono, type TypedResponse } from "hono";
 import { F } from "@panth977/functions";
 import { R } from "@panth977/routes";
 import { z } from "zod";
@@ -27,7 +27,9 @@ function pathParser<
   return path.replace(/{([^}]+)}/g, ":$1");
 }
 
-export const HonoState = F.ContextState.Tree<[Context]>(
+export const HonoState: F.ContextState<[Context]> = F.ContextState.Tree<
+  [Context]
+>(
   "Middleware",
   "create&read",
 );
@@ -64,7 +66,12 @@ export class HonoHttpContext extends R.HttpContext {
     HonoState.set(this, [c]);
   }
 
-  override get req() {
+  override get req(): {
+    headers: Record<string, string | string[]>;
+    path: Record<string, string> | string[];
+    query: Record<string, string | string[]>;
+    body: any;
+  } {
     return {
       headers: this.c.req.header(),
       path: this.c.req.param(),
@@ -131,7 +138,10 @@ export class HonoSseContext extends R.SseContext {
     HonoState.set(this, [c]);
   }
 
-  override get req() {
+  override get req(): {
+    path: Record<string, string>;
+    query: Record<string, string | string[]>;
+  } {
     return {
       path: this.c.req.param(),
       query: this.c.req.query(),
@@ -151,7 +161,7 @@ export class HonoSseContext extends R.SseContext {
     this.controller?.close();
   }
 
-  getResponse() {
+  getResponse(): Response {
     const stream = new ReadableStream({
       start: (controller) => {
         this.controller = controller;
