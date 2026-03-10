@@ -168,10 +168,11 @@ export class HonoSseContext extends R.SseContext {
     c: Context,
   ): Promise<any> {
     const context = await onSseReq(c);
+    const now = Date.now();
     context.logDebug("Req(🔁)", c.req.url);
     const executor = new R.SseExecutor(context, sse);
     executor.start(); // Non-blocking
-    context.logDebug("Req(🔚)", c.req.url);
+    context.logDebug("Req(🔚).time(ms)", Date.now() - now);
     return context.getResponse();
   }
 
