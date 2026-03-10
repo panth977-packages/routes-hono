@@ -35,19 +35,57 @@ export const HonoState: F.ContextState<[Context]> = F.ContextState.Tree<
 );
 
 export class HonoHttpContext extends R.HttpContext {
+  override middlewareReq(): R.PromiseLikeOr<
+    {
+      headers: Record<string, string | string[]>;
+      query: Record<string, string | string[]>;
+    }
+  > {
+    return {
+      headers: this.c.req.header(),
+      query: this.c.req.query(),
+    };
+  }
+  override async handlerReq(): Promise<
+    {
+      headers: Record<string, string | string[]>;
+      query: Record<string, string | string[]>;
+      path: Record<string, string> | string[];
+      body: any;
+    }
+  > {
+    return {
+      headers: this.c.req.header(),
+      path: this.c.req.param(),
+      query: this.c.req.query(),
+      body: await this.c.req.json().catch(() => null),
+    };
+  }
   static debug = false;
   protected static onError(error: unknown) {
     if (this.debug) console.error(error);
   }
 
-  private body: any;
   private onComplete?: (res: any) => void;
   static onComplete(context: HonoHttpContext, fn: (res: any) => void) {
     context.onComplete = fn;
   }
 
-  static setBody(context: HonoHttpContext, body: any) {
-    context.body = body;
+  static async createHandler(
+    onHttpReq: GenHttpContext,
+    http: R.FuncHttpExported<R.HttpInput, R.HttpOutput, R.HttpTypes>,
+    c: Context,
+  ) {
+    const context = await onHttpReq(c);
+    context.logDebug("Req(🔁)", c.req.url);
+    const promise = new Promise(
+      HonoHttpContext.onComplete.bind(HonoHttpContext, context),
+    );
+    const executor = new R.HttpExecutor(context, http);
+    executor.start();
+    const ret = await promise;
+    context.logDebug("Req(🔚)", c.req.url);
+    return ret;
   }
 
   constructor(
@@ -64,20 +102,6 @@ export class HonoHttpContext extends R.HttpContext {
   ) {
     super(requestId, `${c.req.method}, ${c.req.url}`);
     HonoState.set(this, [c]);
-  }
-
-  override get req(): {
-    headers: Record<string, string | string[]>;
-    path: Record<string, string> | string[];
-    query: Record<string, string | string[]>;
-    body: any;
-  } {
-    return {
-      headers: this.c.req.header(),
-      path: this.c.req.param(),
-      query: this.c.req.query(),
-      body: this.body,
-    };
   }
 
   override setResHeaders(headers: Record<string, string | string[]>): void {
@@ -138,7 +162,20 @@ export class HonoSseContext extends R.SseContext {
     HonoState.set(this, [c]);
   }
 
-  override get req(): {
+  static async createHandler(
+    onSseReq: GenSseContext,
+    sse: R.FuncSseExported<R.SseInput, R.SseOutput, R.SseTypes>,
+    c: Context,
+  ) {
+    const context = await onSseReq(c);
+    context.logDebug("Req(🔁)", c.req.url);
+    const executor = new R.SseExecutor(context, sse);
+    executor.start(); // Non-blocking
+    context.logDebug("Req(🔚)", c.req.url);
+    return context.getResponse();
+  }
+
+  override req(): {
     path: Record<string, string>;
     query: Record<string, string | string[]>;
   } {
@@ -195,49 +232,42 @@ export function serve({
   onSseReq?: GenSseContext;
 }): Hono {
   const app = new Hono();
-
   for (
-    const build of Object.values(bundle).sort(
-      (x, y) => x.node.docsOrder - y.node.docsOrder,
+    const build of Object.values(bundle).sort((x, y) =>
+      x.node.docsOrder - y.node.docsOrder
     )
   ) {
-    const path = pathParser(build.node.paths[0], build.node.reqPath); // Hono usually takes one path per registration
-
-    for (const method of build.node.methods) {
-      if (build.node instanceof R.FuncHttp) {
-        const http = build as R.FuncHttpExported<
+    let handler;
+    if (build.node instanceof R.FuncHttp) {
+      if (!onHttpReq) throw new Error("Need [onHttpReq]");
+      handler = HonoHttpContext.createHandler.bind(
+        HonoHttpContext,
+        onHttpReq,
+        build as R.FuncHttpExported<
           R.HttpInput,
           R.HttpOutput,
           R.HttpTypes
-        >;
-        if (!onHttpReq) throw new Error("Need [onHttpReq]");
-        (app as any)[method](path, async (c: Context) => {
-          const context = await onHttpReq(c);
-          HonoHttpContext.setBody(
-            context,
-            await c.req.json().catch(() => null),
-          );
-          const promise = new Promise(
-            HonoHttpContext.onComplete.bind(HonoHttpContext, context),
-          );
-          const executor = new R.HttpExecutor(context, http);
-          executor.start();
-          const ret = await promise;
-          return ret;
-        });
-      } else {
-        const sse = build as R.FuncSseExported<
+        >,
+      );
+    } else {
+      if (!onSseReq) throw new Error("Need [onSseReq]");
+      handler = HonoSseContext.createHandler.bind(
+        HonoSseContext,
+        onSseReq,
+        build as R.FuncSseExported<
           R.SseInput,
           R.SseOutput,
           R.SseTypes
-        >;
-        if (!onSseReq) throw new Error("Need [onSseReq]");
-        (app as any)[method](path, async (c: Context) => {
-          const context = await onSseReq(c);
-          const executor = new R.SseExecutor(context, sse);
-          executor.start(); // Non-blocking
-          return context.getResponse();
-        });
+        >,
+      );
+    }
+    for (const path of build.node.paths) {
+      for (const method of build.node.methods) {
+        if (build.node instanceof R.FuncHttp) {
+          (app as any)[method](pathParser(path, build.node.reqPath), handler);
+        } else {
+          (app as any)[method](pathParser(path, build.node.reqPath), handler);
+        }
       }
     }
   }

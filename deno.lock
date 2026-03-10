@@ -1,31 +1,33 @@
 {
-  "version": "4",
+  "version": "5",
   "specifiers": {
-    "jsr:@panth977/functions@^2.1.0": "2.1.0",
-    "jsr:@panth977/routes@^2.1.0": "2.1.0",
-    "jsr:@panth977/tools@^2.1.0": "2.1.0",
+    "jsr:@panth977/functions@^2.1.0": "2.1.1",
+    "jsr:@panth977/routes@^2.1.1": "2.1.1",
+    "jsr:@panth977/tools@^2.1.0": "2.1.1",
+    "jsr:@panth977/tools@^2.1.1": "2.1.1",
     "npm:hono@^4.12.5": "4.12.5",
     "npm:zod-openapi@^4.2.4": "4.2.4_zod@3.25.76",
     "npm:zod@^3.25.76": "3.25.76"
   },
   "jsr": {
-    "@panth977/functions@2.1.0": {
-      "integrity": "31695e3635e5102224686f40ada069448d11556d87c8646586a90e670c22219a",
+    "@panth977/functions@2.1.1": {
+      "integrity": "d8e83c791f5b5baae772c7092e624ce55d2efa182607959623a37e6fa5e6e851",
       "dependencies": [
-        "jsr:@panth977/tools",
+        "jsr:@panth977/tools@^2.1.0",
         "npm:zod"
       ]
     },
-    "@panth977/routes@2.1.0": {
-      "integrity": "1d0d4593a74e3a5c20089ec9d6ed8288612ca6315e11f3110ee844ddc24cbc0f",
+    "@panth977/routes@2.1.1": {
+      "integrity": "b7a43a7c2bcc1243d4c28946ea9861c30e77769f19a9909e5bbc33a048a61f74",
       "dependencies": [
         "jsr:@panth977/functions",
+        "jsr:@panth977/tools@^2.1.1",
         "npm:zod",
         "npm:zod-openapi"
       ]
     },
-    "@panth977/tools@2.1.0": {
-      "integrity": "e197fd034178565a2bf1606f05d3f68a0321a2d39a533c7f450948c3234d1107",
+    "@panth977/tools@2.1.1": {
+      "integrity": "3bec2210ddb8be699838124c86f05bd08c8d15dc48ae51b6d7e25100bdebb502",
       "dependencies": [
         "npm:zod"
       ]
@@ -48,7 +50,7 @@
   "workspace": {
     "dependencies": [
       "jsr:@panth977/functions@^2.1.0",
-      "jsr:@panth977/routes@^2.1.0",
+      "jsr:@panth977/routes@^2.1.1",
       "npm:hono@^4.12.5",
       "npm:zod@^3.25.76"
     ]
