@@ -75,7 +75,7 @@ export class HonoHttpContext extends R.HttpContext {
     onHttpReq: GenHttpContext,
     http: R.FuncHttpExported<R.HttpInput, R.HttpOutput, R.HttpTypes>,
     c: Context,
-  ) {
+  ): Promise<any> {
     const context = await onHttpReq(c);
     context.logDebug("Req(🔁)", c.req.url);
     const promise = new Promise(
@@ -166,7 +166,7 @@ export class HonoSseContext extends R.SseContext {
     onSseReq: GenSseContext,
     sse: R.FuncSseExported<R.SseInput, R.SseOutput, R.SseTypes>,
     c: Context,
-  ) {
+  ): Promise<any> {
     const context = await onSseReq(c);
     context.logDebug("Req(🔁)", c.req.url);
     const executor = new R.SseExecutor(context, sse);
