@@ -1,6 +1,6 @@
 {
   "name": "@panth977/routes-hono",
-  "version": "2.2.2",
+  "version": "2.3.0",
   "license": "MIT",
   "exports": "./mod.ts",
   "tasks": {
@@ -13,8 +13,8 @@
     }
   },
   "imports": {
-    "@panth977/functions": "jsr:@panth977/functions@^2.2.2",
-    "@panth977/routes": "jsr:@panth977/routes@^2.2.2",
+    "@panth977/functions": "jsr:@panth977/functions@^2.3.0",
+    "@panth977/routes": "jsr:@panth977/routes@^2.3.0",
     "zod": "npm:zod@^3.25.76",
     "@hono/hono": "jsr:@hono/hono@^4.12.7"
   }

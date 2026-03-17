@@ -29,31 +29,24 @@ function pathParser<
 
 export const HonoState: F.ContextState<[Context]> = F.ContextState.Tree<
   [Context]
->(
-  "Middleware",
-  "create&read",
-);
+>("Middleware", "create&read");
 
 export class HonoHttpContext extends R.HttpContext {
-  override middlewareReq(): R.PromiseLikeOr<
-    {
-      headers: Record<string, string | string[]>;
-      query: Record<string, string | string[]>;
-    }
-  > {
+  override middlewareReq(): R.PromiseLikeOr<{
+    headers: Record<string, string | string[]>;
+    query: Record<string, string | string[]>;
+  }> {
     return {
       headers: this.c.req.header(),
       query: this.c.req.query(),
     };
   }
-  override async handlerReq(): Promise<
-    {
-      headers: Record<string, string | string[]>;
-      query: Record<string, string | string[]>;
-      path: Record<string, string> | string[];
-      body: any;
-    }
-  > {
+  override async handlerReq(): Promise<{
+    headers: Record<string, string | string[]>;
+    query: Record<string, string | string[]>;
+    path: Record<string, string> | string[];
+    body: any;
+  }> {
     return {
       headers: this.c.req.header(),
       path: this.c.req.param(),
@@ -233,33 +226,23 @@ export function serve({
   onSseReq?: GenSseContext;
 }): Hono {
   const app = new Hono();
-  for (
-    const build of Object.values(bundle).sort((x, y) =>
-      x.node.docsOrder - y.node.docsOrder
-    )
-  ) {
+  for (const build of Object.values(bundle).sort(
+    (x, y) => x.node.docsOrder - y.node.docsOrder,
+  )) {
     let handler;
     if (build.node instanceof R.FuncHttp) {
       if (!onHttpReq) throw new Error("Need [onHttpReq]");
       handler = HonoHttpContext.createHandler.bind(
         HonoHttpContext,
         onHttpReq,
-        build as R.FuncHttpExported<
-          R.HttpInput,
-          R.HttpOutput,
-          R.HttpTypes
-        >,
+        build as R.FuncHttpExported<R.HttpInput, R.HttpOutput, R.HttpTypes>,
       );
     } else {
       if (!onSseReq) throw new Error("Need [onSseReq]");
       handler = HonoSseContext.createHandler.bind(
         HonoSseContext,
         onSseReq,
-        build as R.FuncSseExported<
-          R.SseInput,
-          R.SseOutput,
-          R.SseTypes
-        >,
+        build as R.FuncSseExported<R.SseInput, R.SseOutput, R.SseTypes>,
       );
     }
     for (const path of build.node.paths) {
