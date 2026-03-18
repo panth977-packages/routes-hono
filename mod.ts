@@ -166,7 +166,7 @@ export class HonoSseContext extends R.SseContext {
     const executor = new R.SseExecutor(context, sse);
     executor.start(); // Non-blocking
     context.logDebug("Req(🔚).time(ms)", Date.now() - now);
-    return context.getResponse();
+    return context.getResponse(() => executor.cancel());
   }
 
   override req(): {
@@ -192,11 +192,12 @@ export class HonoSseContext extends R.SseContext {
     this.controller?.close();
   }
 
-  getResponse(): Response {
+  getResponse(onCancel?: () => void): Response {
     const stream = new ReadableStream({
       start: (controller) => {
         this.controller = controller;
       },
+      cancel: onCancel,
     });
     return this.c.body(stream, {
       headers: {
