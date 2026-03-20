@@ -72,7 +72,7 @@ export class HonoHttpContext extends R.HttpContext {
     return {
       headers: this.c.req.header(),
       path: this.c.req.param(),
-      query: this.c.req.query(),
+      query: toQuery(this.c.req.query(), this.c.req.queries()),
       body: await this.c.req.json().catch(() => null),
     };
   }
