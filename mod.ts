@@ -31,6 +31,28 @@ export const HonoState: F.ContextState<[Context]> = F.ContextState.Tree<
   [Context]
 >("Middleware", "create&read");
 
+function toQuery(
+  query: Record<string, string>,
+  queries: Record<string, string[]>,
+) {
+  const q: Record<string, string | string[]> = {};
+  for (const key of new Set([...Object.keys(query), ...Object.keys(queries)])) {
+    if (key.endsWith("[]")) {
+      const k = key.slice(0, -2);
+      q[k] = [
+        ...(q[k] ?? []),
+        ...(queries[key] ?? []),
+        ...(query[key] ? [query[key]] : []),
+      ];
+    } else if (key in queries) {
+      q[key] = [...queries[key], ...(query[key] ? [query[key]] : [])];
+    } else {
+      q[key] = query[key];
+    }
+  }
+  return q;
+}
+
 export class HonoHttpContext extends R.HttpContext {
   override middlewareReq(): R.PromiseLikeOr<{
     headers: Record<string, string | string[]>;
@@ -38,7 +60,7 @@ export class HonoHttpContext extends R.HttpContext {
   }> {
     return {
       headers: this.c.req.header(),
-      query: this.c.req.query(),
+      query: toQuery(this.c.req.query(), this.c.req.queries()),
     };
   }
   override async handlerReq(): Promise<{
@@ -175,7 +197,7 @@ export class HonoSseContext extends R.SseContext {
   } {
     return {
       path: this.c.req.param(),
-      query: this.c.req.query(),
+      query: toQuery(this.c.req.query(), this.c.req.queries()),
     };
   }
 
