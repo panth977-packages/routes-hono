@@ -44,7 +44,7 @@ function toQuery(
         ...(queries[key] ?? []),
         ...(query[key] ? [query[key]] : []),
       ];
-    } else if (key in queries) {
+    } else if (key in queries && queries[key].length > 1) {
       q[key] = [...queries[key], ...(query[key] ? [query[key]] : [])];
     } else {
       q[key] = query[key];
