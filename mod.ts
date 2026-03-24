@@ -100,6 +100,7 @@ export class HonoHttpContext extends R.HttpContext {
     executor.start();
     const ret = await promise;
     context.logDebug("Req(🔚)", c.req.url);
+    HonoHttpContext.dispose(context);
     return ret;
   }
 
@@ -188,7 +189,10 @@ export class HonoSseContext extends R.SseContext {
     const executor = new R.SseExecutor(context, sse);
     executor.start(); // Non-blocking
     context.logDebug("Req(🔚).time(ms)", Date.now() - now);
-    return context.getResponse(() => executor.cancel());
+    return context.getResponse(() => {
+      executor.cancel();
+      HonoSseContext.dispose(context);
+    });
   }
 
   override req(): {
