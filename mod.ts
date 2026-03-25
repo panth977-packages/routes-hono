@@ -1,20 +1,24 @@
-import { type Context, Hono } from '@hono/hono';
-import { F } from '@panth977/functions';
-import { R } from '@panth977/routes';
-import { z } from 'zod';
+import { type Context, Hono } from "@hono/hono";
+import { F } from "@panth977/functions";
+import { R } from "@panth977/routes";
+import { z } from "zod";
 
 /**
  * Converts {param} syntax to Hono's :param syntax with regex constraints
  */
-export function pathParser<I extends R.HttpInput, O extends R.HttpOutput, Type extends R.HttpTypes>(
+export function pathParser<
+  I extends R.HttpInput,
+  O extends R.HttpOutput,
+  Type extends R.HttpTypes,
+>(
   path: string,
-  schema: R.FuncHttp<I, O, Type>['reqPath'],
+  schema: R.FuncHttp<I, O, Type>["reqPath"],
 ): string {
   if (schema instanceof z.ZodObject) {
     return path.replace(/{([^}]+)}/g, (_, x) => {
       const s = schema.shape[x];
       if (s instanceof z.ZodEnum) {
-        const enums = Object.keys(s.enum).join('|');
+        const enums = Object.keys(s.enum).join("|");
         return `:${x}{${enums}}`;
       }
       if (s instanceof z.ZodNumber) {
@@ -23,17 +27,26 @@ export function pathParser<I extends R.HttpInput, O extends R.HttpOutput, Type e
       return `:${x}`;
     });
   }
-  return path.replace(/{([^}]+)}/g, ':$1');
+  return path.replace(/{([^}]+)}/g, ":$1");
 }
 
-export const HonoState: F.ContextState<[Context]> = F.ContextState.Tree<[Context]>('Middleware', 'create&read');
+export const HonoState: F.ContextState<[Context]> = F.ContextState.Tree<
+  [Context]
+>("Middleware", "create&read");
 
-function toQuery(query: Record<string, string>, queries: Record<string, string[]>) {
+function toQuery(
+  query: Record<string, string>,
+  queries: Record<string, string[]>,
+) {
   const q: Record<string, string | string[]> = {};
   for (const key of new Set([...Object.keys(query), ...Object.keys(queries)])) {
-    if (key.endsWith('[]')) {
+    if (key.endsWith("[]")) {
       const k = key.slice(0, -2);
-      q[k] = [...(q[k] ?? []), ...(queries[key] ?? []), ...(query[key] ? [query[key]] : [])];
+      q[k] = [
+        ...(q[k] ?? []),
+        ...(queries[key] ?? []),
+        ...(query[key] ? [query[key]] : []),
+      ];
     } else if (key in queries && queries[key].length > 1) {
       q[key] = [...queries[key], ...(query[key] ? [query[key]] : [])];
     } else {
@@ -72,17 +85,17 @@ export class HonoHttpContext extends R.RouteContext {
     },
     successRes(context, contentType, headers, content) {
       HonoHttpContext.setResHeaders(context, headers);
-      context.c.header('Access-Control-Allow-Origin', '*');
-      context.c.header('Content-Type', contentType);
+      context.c.header("Access-Control-Allow-Origin", "*");
+      context.c.header("Content-Type", contentType);
       context.c.status(200);
-      if (contentType === 'application/json') {
+      if (contentType === "application/json") {
         return context.c.json(content);
-      } else if (typeof content === 'string') {
+      } else if (typeof content === "string") {
         return context.c.text(content);
       } else if (content instanceof ArrayBuffer) {
         return context.c.body(content);
       }
-      throw new Error('Unknown Type');
+      throw new Error("Unknown Type");
     },
     errorRes(context, status, headers, message) {
       HonoHttpContext.setResHeaders(context, headers);
@@ -91,10 +104,13 @@ export class HonoHttpContext extends R.RouteContext {
     },
   };
 
-  private static setResHeaders(context: HonoHttpContext, headers: Record<string, string | string[]>): void {
+  private static setResHeaders(
+    context: HonoHttpContext,
+    headers: Record<string, string | string[]>,
+  ): void {
     for (const key in headers) {
       if (Array.isArray(headers[key])) {
-        context.c.header(key, headers[key].join(','));
+        context.c.header(key, headers[key].join(","));
       } else {
         context.c.header(key, headers[key]);
       }
@@ -130,34 +146,58 @@ export class HonoSseContext extends R.RouteContext {
       });
       return context.c.body(stream, {
         headers: {
-          'Content-Type': 'text/event-stream',
-          'Cache-Control': 'no-cache',
-          Connection: 'keep-alive',
-          'Access-Control-Allow-Origin': '*',
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          Connection: "keep-alive",
+          "Access-Control-Allow-Origin": "*",
         },
       });
     },
     sendData(context, data) {
-      context.controller?.enqueue(new TextEncoder().encode(`data: ${data}\n\n`));
+      try {
+        context.controller?.enqueue(
+          new TextEncoder().encode(`data: ${data}\n\n`),
+        );
+      } catch {
+        // stream already closed/cancelled or parse error — skip
+      }
     },
     endSuccess(context) {
       context.controller?.close();
     },
     endError(context, data) {
-      context.controller?.enqueue(new TextEncoder().encode(`data: ${data}\n\n`));
+      try {
+        context.controller?.enqueue(
+          new TextEncoder().encode(`data: ${data}\n\n`),
+        );
+      } catch {
+        // stream already closed/cancelled or parse error — skip
+      }
       context.controller?.close();
     },
   };
 }
 async function httpHandler(
   onHttpReq: (c: Context) => HonoHttpContext | Promise<HonoHttpContext>,
-  onHttpError: (context: HonoHttpContext, err: unknown) => { status: number; headers?: Record<string, string[] | string>; message: string },
+  onHttpError: (
+    context: HonoHttpContext,
+    err: unknown,
+  ) => {
+    status: number;
+    headers?: Record<string, string[] | string>;
+    message: string;
+  },
   build: R.FuncHttpExported<R.HttpInput, R.HttpOutput, R.HttpTypes>,
   c: Context,
 ) {
   const context = await onHttpReq(c);
   try {
-    return await R.executeHttp(context, build, HonoHttpContext.handler, onHttpError);
+    return await R.executeHttp(
+      context,
+      build,
+      HonoHttpContext.handler,
+      onHttpError,
+    );
   } finally {
     HonoHttpContext.dispose(context);
   }
@@ -169,7 +209,13 @@ async function sseHandler(
   c: Context,
 ) {
   const context = await onSseReq(c);
-  return R.executeSse(context, build, HonoSseContext.handler, onSseError, F.Context.dispose);
+  return R.executeSse(
+    context,
+    build,
+    HonoSseContext.handler,
+    onSseError,
+    F.Context.dispose,
+  );
 }
 export function serve({
   bundle,
@@ -181,14 +227,25 @@ export function serve({
   bundle: Record<string, R.EndpointBuild>;
   onHttpReq?: (c: Context) => HonoHttpContext | Promise<HonoHttpContext>;
   onSseReq?: (c: Context) => HonoSseContext | Promise<HonoSseContext>;
-  onHttpError?: (context: HonoHttpContext, err: unknown) => { status: number; headers?: Record<string, string[] | string>; message: string };
+  onHttpError?: (
+    context: HonoHttpContext,
+    err: unknown,
+  ) => {
+    status: number;
+    headers?: Record<string, string[] | string>;
+    message: string;
+  };
   onSseError?: (context: HonoSseContext, err: unknown) => string;
 }): Hono {
   const app = new Hono();
-  for (const build of Object.values(bundle).sort((x, y) => x.node.docsOrder - y.node.docsOrder)) {
+  for (
+    const build of Object.values(bundle).sort((x, y) =>
+      x.node.docsOrder - y.node.docsOrder
+    )
+  ) {
     if (R.isHttpExport(build)) {
-      if (!onHttpReq) throw new Error('Need [onHttpReq]');
-      if (!onHttpError) throw new Error('Need [onHttpError]');
+      if (!onHttpReq) throw new Error("Need [onHttpReq]");
+      if (!onHttpError) throw new Error("Need [onHttpError]");
       const handler = httpHandler.bind(null, onHttpReq, onHttpError, build);
       for (const path of build.node.paths) {
         for (const method of build.node.methods) {
@@ -196,8 +253,8 @@ export function serve({
         }
       }
     } else if (R.isSseExport(build)) {
-      if (!onSseReq) throw new Error('Need [onSseReq]');
-      if (!onSseError) throw new Error('Need [onSseError]');
+      if (!onSseReq) throw new Error("Need [onSseReq]");
+      if (!onSseError) throw new Error("Need [onSseError]");
       const handler = sseHandler.bind(null, onSseReq, onSseError, build);
       for (const path of build.node.paths) {
         for (const method of build.node.methods) {
