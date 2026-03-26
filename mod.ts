@@ -68,9 +68,16 @@ export class HonoHttpContext extends R.RouteContext {
     HonoState.set(this, [c]);
   }
 
-  static readonly zFile: z.ZodType<Blob, z.ZodTypeDef, Blob> = z.instanceof(Blob);
+  static readonly zFile: z.ZodType<
+    Blob,
+    z.ZodTypeDef,
+    Blob
+  > = z.instanceof(Blob);
 
-  static handler: R.HttpHandlers<HonoHttpContext, Response> = {
+  static handler: R.HttpHandlers<
+    HonoHttpContext,
+    Response | Promise<Response>
+  > = {
     middlewareReq(context) {
       return {
         headers: context.c.req.header(),
@@ -85,15 +92,17 @@ export class HonoHttpContext extends R.RouteContext {
         body: await context.c.req.json().catch(() => null),
       };
     },
-    successRes(context, contentType, headers, content) {
-      headers["Access-Control-Allow-Origin"] = '*';
+    async successRes(context, contentType, headers, content) {
+      headers["Access-Control-Allow-Origin"] = "*";
       headers["Content-Type"] = contentType;
       if (contentType === "application/json") {
         return context.c.json(content, 200, headers);
       } else if (typeof content === "string") {
         return context.c.text(content, 200, headers);
       } else if (content instanceof Blob) {
-        return context.c.body(content.stream(), 200, headers);
+        const arrayBuffer = await content.arrayBuffer();
+        headers["Content-Length"] = content.size.toString();
+        return context.c.body(arrayBuffer, 200, headers);
       }
       throw new Error("Unknown Type");
     },
