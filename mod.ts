@@ -68,6 +68,8 @@ export class HonoHttpContext extends R.RouteContext {
     HonoState.set(this, [c]);
   }
 
+  static readonly zFile = z.instanceof(Blob);
+
   static handler: R.HttpHandlers<HonoHttpContext, Response> = {
     middlewareReq(context) {
       return {
@@ -84,38 +86,21 @@ export class HonoHttpContext extends R.RouteContext {
       };
     },
     successRes(context, contentType, headers, content) {
-      HonoHttpContext.setResHeaders(context, headers);
-      context.c.header("Access-Control-Allow-Origin", "*");
-      context.c.header("Content-Type", contentType);
-      context.c.status(200);
+      headers["Access-Control-Allow-Origin"] = '*';
+      headers["Content-Type"] = contentType;
       if (contentType === "application/json") {
-        return context.c.json(content);
+        return context.c.json(content, 200, headers);
       } else if (typeof content === "string") {
-        return context.c.text(content);
-      } else if (content instanceof ArrayBuffer) {
-        return context.c.body(content);
+        return context.c.text(content, 200, headers);
+      } else if (content instanceof Blob) {
+        return context.c.body(content.stream(), 200, headers);
       }
       throw new Error("Unknown Type");
     },
     errorRes(context, status, headers, message) {
-      HonoHttpContext.setResHeaders(context, headers);
-      context.c.status(status as any);
-      return context.c.text(message);
+      return context.c.text(message, status as never, headers);
     },
   };
-
-  private static setResHeaders(
-    context: HonoHttpContext,
-    headers: Record<string, string | string[]>,
-  ): void {
-    for (const key in headers) {
-      if (Array.isArray(headers[key])) {
-        context.c.header(key, headers[key].join(","));
-      } else {
-        context.c.header(key, headers[key]);
-      }
-    }
-  }
 }
 
 export class HonoSseContext extends R.RouteContext {
@@ -227,10 +212,7 @@ export function serve({
   bundle: Record<string, R.EndpointBuild>;
   onHttpReq?: (c: Context) => HonoHttpContext | Promise<HonoHttpContext>;
   onSseReq?: (c: Context) => HonoSseContext | Promise<HonoSseContext>;
-  onHttpError?: (
-    context: HonoHttpContext,
-    err: unknown,
-  ) => {
+  onHttpError?: (context: HonoHttpContext, err: unknown) => {
     status: number;
     headers?: Record<string, string[] | string>;
     message: string;
