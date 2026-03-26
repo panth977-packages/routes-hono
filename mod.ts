@@ -68,7 +68,7 @@ export class HonoHttpContext extends R.RouteContext {
     HonoState.set(this, [c]);
   }
 
-  static readonly zFile = z.instanceof(Blob);
+  static readonly zFile: z.ZodType<Blob, z.ZodTypeDef, Blob> = z.instanceof(Blob);
 
   static handler: R.HttpHandlers<HonoHttpContext, Response> = {
     middlewareReq(context) {
