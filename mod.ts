@@ -92,19 +92,18 @@ export class HonoHttpContext extends R.RouteContext {
         body: await context.c.req.json().catch(() => null),
       };
     },
-    async successRes(context, contentType, headers, content) {
-      headers["Access-Control-Allow-Origin"] = "*";
-      headers["Content-Type"] = contentType;
-      if (contentType === "application/json") {
-        return context.c.json(content, 200, headers);
-      } else if (typeof content === "string") {
-        return context.c.text(content, 200, headers);
-      } else if (content instanceof Blob) {
+    async successRes(context, headers, content) {
+      headers["Access-Control-Allow-Origin"] ??= "*";
+      if (content instanceof Blob) {
         const arrayBuffer = await content.arrayBuffer();
-        headers["Content-Length"] = content.size.toString();
+        headers["Content-Length"] ??= content.size.toString();
+        headers['Content-Type'] ??= content.type;
         return context.c.body(arrayBuffer, 200, headers);
       }
-      throw new Error("Unknown Type");
+      if ('Content-Type' in headers && typeof content === 'string') {
+        return context.c.text(content, 200, headers);
+      }
+      return context.c.json(content, 200, headers);
     },
     errorRes(context, status, headers, message) {
       return context.c.text(message, status as never, headers);
