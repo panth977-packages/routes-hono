@@ -136,6 +136,9 @@ export class HonoSseContext extends R.RouteContext {
         start: (controller) => {
           context.controller = controller;
         },
+        cancel: () => {
+          context.controller = undefined;
+        },
       });
       return context.c.body(stream, {
         headers: {
@@ -147,30 +150,20 @@ export class HonoSseContext extends R.RouteContext {
       });
     },
     sendData(context, data) {
-      try {
-        context.controller?.enqueue(
-          new TextEncoder().encode(`data: ${data}\n\n`),
-        );
-      } catch {
-        // stream already closed/cancelled or parse error — skip
-      }
+      context.controller?.enqueue(
+        new TextEncoder().encode(`data: ${data}\n\n`),
+      );
     },
     endSuccess(context) {
-      try {
-        context.controller?.close();
-      } catch {
-        // stream already closed/cancelled or parse error — skip
-      }
+      context.controller?.close();
+      context.controller = undefined;
     },
     endError(context, data) {
-      try {
-        context.controller?.enqueue(
-          new TextEncoder().encode(`data: ${data}\n\n`),
-        );
-        context.controller?.close();
-      } catch {
-        // stream already closed/cancelled or parse error — skip
-      }
+      context.controller?.enqueue(
+        new TextEncoder().encode(`data: ${data}\n\n`),
+      );
+      context.controller?.close();
+      context.controller = undefined;
     },
   };
 }
