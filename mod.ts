@@ -97,10 +97,10 @@ export class HonoHttpContext extends R.RouteContext {
       if (content instanceof Blob) {
         const arrayBuffer = await content.arrayBuffer();
         headers["Content-Length"] ??= content.size.toString();
-        headers['Content-Type'] ??= content.type;
+        headers["Content-Type"] ??= content.type;
         return context.c.body(arrayBuffer, 200, headers);
       }
-      if ('Content-Type' in headers && typeof content === 'string') {
+      if ("Content-Type" in headers && typeof content === "string") {
         return context.c.text(content, 200, headers);
       }
       return context.c.json(content, 200, headers);
@@ -156,17 +156,21 @@ export class HonoSseContext extends R.RouteContext {
       }
     },
     endSuccess(context) {
-      context.controller?.close();
+      try {
+        context.controller?.close();
+      } catch {
+        // stream already closed/cancelled or parse error — skip
+      }
     },
     endError(context, data) {
       try {
         context.controller?.enqueue(
           new TextEncoder().encode(`data: ${data}\n\n`),
         );
+        context.controller?.close();
       } catch {
         // stream already closed/cancelled or parse error — skip
       }
-      context.controller?.close();
     },
   };
 }
