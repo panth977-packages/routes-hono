@@ -93,20 +93,28 @@ export class HonoHttpContext extends R.RouteContext {
       };
     },
     async successRes(context, headers, content) {
-      headers["Access-Control-Allow-Origin"] ??= "*";
-      if (content instanceof Blob) {
-        const arrayBuffer = await content.arrayBuffer();
-        headers["Content-Length"] ??= content.size.toString();
-        headers["Content-Type"] ??= content.type;
-        return context.c.body(arrayBuffer, 200, headers);
+      try {
+        headers["Access-Control-Allow-Origin"] ??= "*";
+        if (content instanceof Blob) {
+          const arrayBuffer = await content.arrayBuffer();
+          headers["Content-Length"] ??= content.size.toString();
+          headers["Content-Type"] ??= content.type;
+          return context.c.body(arrayBuffer, 200, headers);
+        }
+        if ("Content-Type" in headers && typeof content === "string") {
+          return context.c.text(content, 200, headers);
+        }
+        return context.c.json(content, 200, headers);
+      } finally {
+        context.logDebug("🔚:✅", context.c.req.url);
       }
-      if ("Content-Type" in headers && typeof content === "string") {
-        return context.c.text(content, 200, headers);
-      }
-      return context.c.json(content, 200, headers);
     },
     errorRes(context, status, headers, message) {
-      return context.c.text(message, status as never, headers);
+      try {
+        return context.c.text(message, status as never, headers);
+      } finally {
+        context.logDebug("🔚:❌", context.c.req.url);
+      }
     },
   };
 }
@@ -155,15 +163,23 @@ export class HonoSseContext extends R.RouteContext {
       );
     },
     endSuccess(context) {
-      context.controller?.close();
-      context.controller = undefined;
+      try {
+        context.controller?.close();
+        context.controller = undefined;
+      } finally {
+        context.logDebug("🔚:✅", context.c.req.url);
+      }
     },
     endError(context, data) {
-      context.controller?.enqueue(
-        new TextEncoder().encode(`data: ${data}\n\n`),
-      );
-      context.controller?.close();
-      context.controller = undefined;
+      try {
+        context.controller?.enqueue(
+          new TextEncoder().encode(`data: ${data}\n\n`),
+        );
+        context.controller?.close();
+        context.controller = undefined;
+      } finally {
+        context.logDebug("🔚:❌", context.c.req.url);
+      }
     },
   };
 }
@@ -182,6 +198,7 @@ async function httpHandler(
 ) {
   const context = await onHttpReq(c);
   try {
+    context.logDebug("🔁", c.req.url);
     return await R.executeHttp(
       context,
       build,
@@ -199,12 +216,13 @@ async function sseHandler(
   c: Context,
 ) {
   const context = await onSseReq(c);
+  context.logDebug("🔁", c.req.url);
   return R.executeSse(
     context,
     build,
     HonoSseContext.handler,
     onSseError,
-    F.Context.dispose,
+    HonoSseContext.dispose.bind(HonoSseContext),
   );
 }
 export function serve({
