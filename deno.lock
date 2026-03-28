@@ -3,7 +3,7 @@
   "specifiers": {
     "jsr:@hono/hono@^4.12.7": "4.12.7",
     "jsr:@panth977/functions@^2.4.7": "2.4.7",
-    "jsr:@panth977/routes@^2.4.4": "2.4.4",
+    "jsr:@panth977/routes@^2.4.5": "2.4.5",
     "jsr:@panth977/tools@^2.4.3": "2.4.3",
     "npm:zod-openapi@^4.2.4": "4.2.4_zod@3.25.76",
     "npm:zod@^3.25.76": "3.25.76"
@@ -19,8 +19,8 @@
         "npm:zod"
       ]
     },
-    "@panth977/routes@2.4.4": {
-      "integrity": "d9bbf7ccc85860db1caf500a95272f9f13e530e36a495733bac7d21a8277317e",
+    "@panth977/routes@2.4.5": {
+      "integrity": "1860e7713ac7ced1ba00a75afd095eeb983c1982e2939f2c687a857e3c6e8e70",
       "dependencies": [
         "jsr:@panth977/functions",
         "jsr:@panth977/tools",
@@ -50,7 +50,7 @@
     "dependencies": [
       "jsr:@hono/hono@^4.12.7",
       "jsr:@panth977/functions@^2.4.7",
-      "jsr:@panth977/routes@^2.4.4",
+      "jsr:@panth977/routes@^2.4.5",
       "jsr:@panth977/tools@^2.4.3",
       "npm:zod@^3.25.76"
     ]

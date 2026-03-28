@@ -75,13 +75,21 @@ export class HonoHttpContext extends R.RouteContext {
     Blob
   > = z.instanceof(Blob);
 
-  private reqForMiddleware() {
+  reqForMiddleware(): {
+    headers: Record<string, string>;
+    query: Record<string, string | string[]>;
+  } {
     return {
       headers: this.c.req.header(),
       query: toQuery(this.c.req.query(), this.c.req.queries()),
     };
   }
-  private async req() {
+  async req(): Promise<{
+    headers: Record<string, string>;
+    path: Record<string, string>;
+    query: Record<string, string | string[]>;
+    body: any;
+  }> {
     return {
       headers: this.c.req.header(),
       path: this.c.req.param(),
@@ -156,7 +164,10 @@ export class HonoSseContext extends R.RouteContext {
     HonoState.set(this, [c]);
   }
 
-  private req() {
+  req(): {
+    path: Record<string, string>;
+    query: Record<string, string | string[]>;
+  } {
     return {
       path: this.c.req.param(),
       query: toQuery(this.c.req.query(), this.c.req.queries()),
@@ -179,8 +190,10 @@ export class HonoSseContext extends R.RouteContext {
     (async function () {
       try {
         let isCanceled = false;
-        stream.onAbort(() => isCanceled = true)
-        for await (const element of T.PStream.Iterable(out, stream.onAbort.bind(stream))) {
+        stream.onAbort(() => isCanceled = true);
+        for await (
+          const element of T.PStream.Iterable(out, stream.onAbort.bind(stream))
+        ) {
           stream.emit(element);
         }
         if (isCanceled) {
