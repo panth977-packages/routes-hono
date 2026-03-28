@@ -161,8 +161,6 @@ export class HonoHttpContext extends F.Context {
         result.status as never,
         headers,
       );
-    } finally {
-      HonoHttpContext.dispose(context);
     }
   }
 }
@@ -235,8 +233,6 @@ export class HonoSseContext extends F.Context {
         context.logDebug("🔚:❌", context.c.req.url);
         stream.emit(`data: ${onError(context, err)}\n\n`);
         stream.close();
-      } finally {
-        HonoSseContext.dispose(context);
       }
     })();
     return c.body(stream.stream.pipeThrough(new TextEncoderStream()), {
