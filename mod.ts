@@ -177,16 +177,14 @@ export class HonoSseContext extends R.RouteContext {
       onError,
     });
     (async function () {
-      let isClosed = false;
-      stream.onAbort(() => isClosed = true);
       try {
-        for await (const element of T.PStream.Iterable(out)) {
-          if (isClosed) break;
+        let isCanceled = false;
+        stream.onAbort(() => isCanceled = true)
+        for await (const element of T.PStream.Iterable(out, stream.onAbort.bind(stream))) {
           stream.emit(element);
         }
-        if (isClosed) {
+        if (isCanceled) {
           context.logDebug("🔚:‼️", context.c.req.url);
-          out.cancel();
         } else {
           context.logDebug("🔚:✅", context.c.req.url);
           stream.close();
