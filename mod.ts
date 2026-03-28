@@ -1,6 +1,7 @@
 import { type Context, Hono } from "@hono/hono";
 import { F } from "@panth977/functions";
 import { R } from "@panth977/routes";
+import { T } from "@panth977/tools";
 import { z } from "zod";
 
 /**
@@ -74,49 +75,72 @@ export class HonoHttpContext extends R.RouteContext {
     Blob
   > = z.instanceof(Blob);
 
-  static handler: R.HttpHandlers<
-    HonoHttpContext,
-    Response | Promise<Response>
-  > = {
-    middlewareReq(context) {
-      return {
-        headers: context.c.req.header(),
-        query: toQuery(context.c.req.query(), context.c.req.queries()),
-      };
+  private reqForMiddleware() {
+    return {
+      headers: this.c.req.header(),
+      query: toQuery(this.c.req.query(), this.c.req.queries()),
+    };
+  }
+  private async req() {
+    return {
+      headers: this.c.req.header(),
+      path: this.c.req.param(),
+      query: toQuery(this.c.req.query(), this.c.req.queries()),
+      body: this.c.req.method.toLowerCase() === "get"
+        ? null
+        : await this.c.req.json().catch(() => null),
+    };
+  }
+
+  static async honoHandler(
+    onHttpReq: (c: Context) => HonoHttpContext | Promise<HonoHttpContext>,
+    onError: (context: HonoHttpContext, err: unknown) => {
+      status: number;
+      headers?: Record<string, string[] | string>;
+      message: string;
     },
-    async handlerReq(context) {
-      return {
-        headers: context.c.req.header(),
-        path: context.c.req.param(),
-        query: toQuery(context.c.req.query(), context.c.req.queries()),
-        body: await context.c.req.json().catch(() => null),
-      };
-    },
-    async successRes(context, headers, content) {
-      try {
-        headers["Access-Control-Allow-Origin"] ??= "*";
-        if (content instanceof Blob) {
-          const arrayBuffer = await content.arrayBuffer();
-          headers["Content-Length"] ??= content.size.toString();
-          headers["Content-Type"] ??= content.type;
-          return context.c.body(arrayBuffer, 200, headers);
-        }
-        if ("Content-Type" in headers && typeof content === "string") {
-          return context.c.text(content, 200, headers);
-        }
-        return context.c.json(content, 200, headers);
-      } finally {
+    build: R.FuncHttpExported<R.HttpInput, R.HttpOutput, R.HttpTypes>,
+    c: Context,
+  ): Promise<Response> {
+    const context = await onHttpReq(c);
+    context.logDebug("🔁", c.req.url);
+    try {
+      const result = await R.executeHttp(
+        context,
+        build,
+        {
+          onError,
+          handlerReq: context.req.bind(context),
+          middlewareReq: context.reqForMiddleware.bind(context),
+        },
+      );
+      if (result.type === "success") {
         context.logDebug("🔚:✅", context.c.req.url);
-      }
-    },
-    errorRes(context, status, headers, message) {
-      try {
-        return context.c.text(message, status as never, headers);
-      } finally {
+        result.headers["Access-Control-Allow-Origin"] ??= "*";
+        if (result.content instanceof Blob) {
+          const arrayBuffer = await result.content.arrayBuffer();
+          result.headers["Content-Length"] ??= result.content.size.toString();
+          result.headers["Content-Type"] ??= result.content.type;
+          return context.c.body(arrayBuffer, 200, result.headers);
+        }
+        if (
+          "Content-Type" in result.headers && typeof result.content === "string"
+        ) {
+          return context.c.text(result.content, 200, result.headers);
+        }
+        return context.c.json(result.content, 200, result.headers);
+      } else {
         context.logDebug("🔚:❌", context.c.req.url);
+        return context.c.text(
+          result.message,
+          result.status as never,
+          result.headers,
+        );
       }
-    },
-  };
+    } finally {
+      HonoHttpContext.dispose(context);
+    }
+  }
 }
 
 export class HonoSseContext extends R.RouteContext {
@@ -132,99 +156,58 @@ export class HonoSseContext extends R.RouteContext {
     HonoState.set(this, [c]);
   }
 
-  static handler: R.SseHandlers<HonoSseContext, Response> = {
-    req(context) {
-      return {
-        path: context.c.req.param(),
-        query: toQuery(context.c.req.query(), context.c.req.queries()),
-      };
-    },
-    start(context) {
-      const stream = new ReadableStream({
-        start: (controller) => {
-          context.controller = controller;
-        },
-        cancel: () => {
-          context.controller = undefined;
-        },
-      });
-      return context.c.body(stream, {
-        headers: {
-          "Content-Type": "text/event-stream",
-          "Cache-Control": "no-cache",
-          Connection: "keep-alive",
-          "Access-Control-Allow-Origin": "*",
-        },
-      });
-    },
-    sendData(context, data) {
-      context.controller?.enqueue(
-        new TextEncoder().encode(`data: ${data}\n\n`),
-      );
-    },
-    endSuccess(context) {
-      try {
-        context.controller?.close();
-        context.controller = undefined;
-      } finally {
-        context.logDebug("🔚:✅", context.c.req.url);
-      }
-    },
-    endError(context, data) {
-      try {
-        context.controller?.enqueue(
-          new TextEncoder().encode(`data: ${data}\n\n`),
-        );
-        context.controller?.close();
-        context.controller = undefined;
-      } finally {
-        context.logDebug("🔚:❌", context.c.req.url);
-      }
-    },
-  };
-}
-async function httpHandler(
-  onHttpReq: (c: Context) => HonoHttpContext | Promise<HonoHttpContext>,
-  onHttpError: (
-    context: HonoHttpContext,
-    err: unknown,
-  ) => {
-    status: number;
-    headers?: Record<string, string[] | string>;
-    message: string;
-  },
-  build: R.FuncHttpExported<R.HttpInput, R.HttpOutput, R.HttpTypes>,
-  c: Context,
-) {
-  const context = await onHttpReq(c);
-  try {
+  private req() {
+    return {
+      path: this.c.req.param(),
+      query: toQuery(this.c.req.query(), this.c.req.queries()),
+    };
+  }
+
+  static async honoHandler(
+    onSseReq: (c: Context) => HonoSseContext | Promise<HonoSseContext>,
+    onError: (context: HonoSseContext, err: unknown) => string,
+    build: R.FuncSseExported<R.SseInput, R.SseOutput, R.SseTypes>,
+    c: Context,
+  ): Promise<Response> {
+    const context = await onSseReq(c);
     context.logDebug("🔁", c.req.url);
-    return await R.executeHttp(
-      context,
-      build,
-      HonoHttpContext.handler,
-      onHttpError,
-    );
-  } finally {
-    HonoHttpContext.dispose(context);
+    const stream = new T.PStream<string>();
+    const out = R.executeSse(context, build, {
+      req: context.req.bind(context),
+      onError,
+    });
+    (async function () {
+      let isClosed = false;
+      stream.onAbort(() => isClosed = true);
+      try {
+        for await (const element of T.PStream.Iterable(out)) {
+          if (isClosed) {
+            context.logDebug("🔚:‼️", context.c.req.url);
+            out.cancel();
+            return;
+          }
+          stream.emit(element);
+        }
+        context.logDebug("🔚:✅", context.c.req.url);
+        stream.close();
+      } catch (err) {
+        context.logDebug("🔚:❌", context.c.req.url);
+        stream.error(err);
+      } finally {
+        HonoSseContext.dispose(context);
+      }
+    })();
+    return c.body(stream.stream, {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+        "Access-Control-Allow-Origin": "*",
+      },
+    });
   }
 }
-async function sseHandler(
-  onSseReq: (c: Context) => HonoSseContext | Promise<HonoSseContext>,
-  onSseError: (context: HonoSseContext, err: unknown) => string,
-  build: R.FuncSseExported<R.SseInput, R.SseOutput, R.SseTypes>,
-  c: Context,
-) {
-  const context = await onSseReq(c);
-  context.logDebug("🔁", c.req.url);
-  return R.executeSse(
-    context,
-    build,
-    HonoSseContext.handler,
-    onSseError,
-    HonoSseContext.dispose.bind(HonoSseContext),
-  );
-}
+
 export function serve({
   bundle,
   onHttpReq,
@@ -251,7 +234,12 @@ export function serve({
     if (R.isHttpExport(build)) {
       if (!onHttpReq) throw new Error("Need [onHttpReq]");
       if (!onHttpError) throw new Error("Need [onHttpError]");
-      const handler = httpHandler.bind(null, onHttpReq, onHttpError, build);
+      const handler = HonoHttpContext.honoHandler.bind(
+        HonoHttpContext,
+        onHttpReq,
+        onHttpError,
+        build,
+      );
       for (const path of build.node.paths) {
         for (const method of build.node.methods) {
           app[method](pathParser(path, build.node.reqPath), handler);
@@ -260,7 +248,12 @@ export function serve({
     } else if (R.isSseExport(build)) {
       if (!onSseReq) throw new Error("Need [onSseReq]");
       if (!onSseError) throw new Error("Need [onSseError]");
-      const handler = sseHandler.bind(null, onSseReq, onSseError, build);
+      const handler = HonoSseContext.honoHandler.bind(
+        HonoSseContext,
+        onSseReq,
+        onSseError,
+        build,
+      );
       for (const path of build.node.paths) {
         for (const method of build.node.methods) {
           app[method](pathParser(path, build.node.reqPath), handler);
