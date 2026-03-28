@@ -57,14 +57,14 @@ function toQuery(
   return q;
 }
 
-export class HonoHttpContext extends R.RouteContext {
+export class HonoHttpContext extends F.Context {
   c: Context;
 
   constructor(
     requestId: string,
     c: Context,
   ) {
-    super(requestId, `${c.req.method}, ${c.req.url}`);
+    super(requestId, `${c.req.method}, ${c.req.url}`, null);
     this.c = c;
     HonoState.set(this, [c]);
   }
@@ -101,7 +101,7 @@ export class HonoHttpContext extends R.RouteContext {
   }
 
   static async honoHandler(
-    onHttpReq: (c: Context) => HonoHttpContext | Promise<HonoHttpContext>,
+    createContext: (c: Context) => HonoHttpContext | Promise<HonoHttpContext>,
     onError: (context: HonoHttpContext, err: unknown) => {
       status: number;
       headers?: Record<string, string[] | string>;
@@ -110,48 +110,64 @@ export class HonoHttpContext extends R.RouteContext {
     build: R.FuncHttpExported<R.HttpInput, R.HttpOutput, R.HttpTypes>,
     c: Context,
   ): Promise<Response> {
-    const context = await onHttpReq(c);
+    const context = await createContext(c);
     context.logDebug("🔁", c.req.url);
-    try {
-      const result = await R.executeHttp(
-        context,
-        build,
-        {
-          onError,
-          handlerReq: context.req.bind(context),
-          middlewareReq: context.reqForMiddleware.bind(context),
-        },
-      );
-      if (result.type === "success") {
-        context.logDebug("🔚:✅", context.c.req.url);
-        result.headers["Access-Control-Allow-Origin"] ??= "*";
-        if (result.content instanceof Blob) {
-          const arrayBuffer = await result.content.arrayBuffer();
-          result.headers["Content-Length"] ??= result.content.size.toString();
-          result.headers["Content-Type"] ??= result.content.type;
-          return context.c.body(arrayBuffer, 200, result.headers);
+    const headers: Record<string, string | string[]> = {};
+    function addHeaders(result: { headers?: Record<string, string[] | string> }) {
+      if (result.headers) {
+        for (const key in result.headers) {
+          if (headers[key] === undefined) {
+            headers[key] = result.headers[key];
+          } else {
+            headers[key] = [
+              ...(Array.isArray(headers[key]) ? headers[key] : [headers[key]]),
+              ...(Array.isArray(result.headers[key])
+                ? result.headers[key]
+                : [result.headers[key]]),
+            ];
+          }
         }
-        if (
-          "Content-Type" in result.headers && typeof result.content === "string"
-        ) {
-          return context.c.text(result.content, 200, result.headers);
-        }
-        return context.c.json(result.content, 200, result.headers);
-      } else {
-        context.logDebug("🔚:❌", context.c.req.url);
-        return context.c.text(
-          result.message,
-          result.status as never,
-          result.headers,
-        );
       }
+    }
+    try {
+      for (const middleware of build.node.middlewares) {
+        const input = context.reqForMiddleware();
+        const result = await middleware(context, input);
+        R.FuncMiddleware.setOpt(context, middleware.node, result.opt);
+        addHeaders(result);
+      }
+      const input = await context.req();
+      const result = await build(context, input);
+      addHeaders(result);
+      const content = result.body;
+      context.logDebug("🔚:✅", context.c.req.url);
+      headers["Access-Control-Allow-Origin"] ??= "*";
+      if (content instanceof Blob) {
+        const arrayBuffer = await content.arrayBuffer();
+        headers["Content-Length"] ??= content.size.toString();
+        headers["Content-Type"] ??= content.type;
+        return context.c.body(arrayBuffer, 200, headers);
+      }
+      if ("Content-Type" in headers && typeof content === "string") {
+        return context.c.text(content, 200, headers);
+      }
+      return context.c.json(content, 200, headers);
+    } catch (err) {
+      const result = onError(context, err);
+      addHeaders(result);
+      context.logDebug("🔚:❌", context.c.req.url);
+      return context.c.text(
+        result.message,
+        result.status as never,
+        headers,
+      );
     } finally {
       HonoHttpContext.dispose(context);
     }
   }
 }
 
-export class HonoSseContext extends R.RouteContext {
+export class HonoSseContext extends F.Context {
   controller?: ReadableStreamDefaultController;
   c: Context;
 
@@ -159,7 +175,7 @@ export class HonoSseContext extends R.RouteContext {
     requestId: string,
     c: Context,
   ) {
-    super(requestId, `${c.req.method}, ${c.req.url}`);
+    super(requestId, `${c.req.method}, ${c.req.url}`, null);
     this.c = c;
     HonoState.set(this, [c]);
   }
@@ -175,44 +191,55 @@ export class HonoSseContext extends R.RouteContext {
   }
 
   static async honoHandler(
-    onSseReq: (c: Context) => HonoSseContext | Promise<HonoSseContext>,
+    createContext: (c: Context) => HonoSseContext | Promise<HonoSseContext>,
     onError: (context: HonoSseContext, err: unknown) => string,
     build: R.FuncSseExported<R.SseInput, R.SseOutput, R.SseTypes>,
     c: Context,
   ): Promise<Response> {
-    const context = await onSseReq(c);
+    const context = await createContext(c);
     context.logDebug("🔁", c.req.url);
     const stream = new T.PStream<string>();
     (async function () {
       try {
+        let isCanceled = false;
         stream.onAbort(() => {
           context.logDebug("🔚:‼️", context.c.req.url);
+          isCanceled = true;
         });
-        const out = R.executeSse(context, build, {
-          req: context.req.bind(context),
-          onError,
-        });
-        await T.PStream.TransferStream(out, stream, {
+        try {
+          for (const middleware of build.node.middlewares) {
+            const input = context.req();
+            const result = await middleware(context, input);
+            if (isCanceled) return;
+            R.FuncMiddleware.setOpt(context, middleware.node, result.opt);
+          }
+        } catch (err) {
+          stream.emit(onError(context, err));
+          stream.close();
+        }
+        await T.PStream.TransferStream(build(context, context.req()), stream, {
           listen(data) {
-            stream.emit(data);
+            stream.emit(`data: ${build.node.encoder(data)}\n\n`);
+          },
+          onError(err) {
+            context.logDebug("🔚:❌", context.c.req.url);
+            stream.emit(`data: ${onError(context, err)}\n\n`);
+            stream.close();
           },
           onEnd() {
             context.logDebug("🔚:✅", context.c.req.url);
             stream.close();
           },
-          onError(err) {
-            context.logDebug("🔚:❌", context.c.req.url);
-            stream.error(err);
-          },
         });
       } catch (err) {
         context.logDebug("🔚:❌", context.c.req.url);
-        stream.error(err);
+        stream.emit(`data: ${onError(context, err)}\n\n`);
+        stream.close();
       } finally {
         HonoSseContext.dispose(context);
       }
     })();
-    return c.body(stream.stream, {
+    return c.body(stream.stream.pipeThrough(new TextEncoderStream()), {
       headers: {
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache",
