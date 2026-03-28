@@ -183,25 +183,28 @@ export class HonoSseContext extends R.RouteContext {
     const context = await onSseReq(c);
     context.logDebug("🔁", c.req.url);
     const stream = new T.PStream<string>();
-    const out = R.executeSse(context, build, {
-      req: context.req.bind(context),
-      onError,
-    });
     (async function () {
       try {
-        let isCanceled = false;
-        stream.onAbort(() => isCanceled = true);
-        for await (
-          const element of T.PStream.Iterable(out, stream.onAbort.bind(stream))
-        ) {
-          stream.emit(element);
-        }
-        if (isCanceled) {
+        stream.onAbort(() => {
           context.logDebug("🔚:‼️", context.c.req.url);
-        } else {
-          context.logDebug("🔚:✅", context.c.req.url);
-          stream.close();
-        }
+        });
+        const out = R.executeSse(context, build, {
+          req: context.req.bind(context),
+          onError,
+        });
+        await T.PStream.TransferStream(out, stream, {
+          listen(data) {
+            stream.emit(data);
+          },
+          onEnd() {
+            context.logDebug("🔚:✅", context.c.req.url);
+            stream.close();
+          },
+          onError(err) {
+            context.logDebug("🔚:❌", context.c.req.url);
+            stream.error(err);
+          },
+        });
       } catch (err) {
         context.logDebug("🔚:❌", context.c.req.url);
         stream.error(err);
