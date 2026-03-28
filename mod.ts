@@ -181,15 +181,16 @@ export class HonoSseContext extends R.RouteContext {
       stream.onAbort(() => isClosed = true);
       try {
         for await (const element of T.PStream.Iterable(out)) {
-          if (isClosed) {
-            context.logDebug("🔚:‼️", context.c.req.url);
-            out.cancel();
-            return;
-          }
+          if (isClosed) break;
           stream.emit(element);
         }
-        context.logDebug("🔚:✅", context.c.req.url);
-        stream.close();
+        if (isClosed) {
+          context.logDebug("🔚:‼️", context.c.req.url);
+          out.cancel();
+        } else {
+          context.logDebug("🔚:✅", context.c.req.url);
+          stream.close();
+        }
       } catch (err) {
         context.logDebug("🔚:❌", context.c.req.url);
         stream.error(err);
